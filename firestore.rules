@@ -1,0 +1,150 @@
+rules_version = '2';
+
+// ============================================================================
+// GoWash — Regras de segurança do Firestore — MODELO PRÉ-PAGO
+// ============================================================================
+// Três tipos de acesso:
+//   - OPERADORES (coleção usuarios): painel de gestão. papel admin|operador.
+//   - CLIENTES (coleção clientes, campo authUid): app do cliente.
+//     Leem só os próprios dados; NÃO podem alterar saldo (só a central pode).
+//   - CENTRAL (Admin SDK): ignora estas regras; é quem mexe em saldo e sessões.
+//
+// Anti-deadlock (lição do ChargeTix): o read de `usuarios` é liberado a
+// qualquer logado, sem depender de ler `usuarios` para decidir.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() { return request.auth != null; }
+
+    function ehOperador() {
+      return logado()
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+    function ehAdmin() {
+      return ehOperador()
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.papel == 'admin';
+    }
+
+    // unidadeId vazio no doc do usuário = equipe interna (vê tudo).
+    // Preenchido = operador só daquela unidade.
+    function minhaUnidadeId() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.get('unidadeId', '');
+    }
+    function ehEquipeInterna() {
+      return ehOperador() && minhaUnidadeId() == '';
+    }
+    function ehOperadorDaUnidade(unidadeId) {
+      return ehOperador() && minhaUnidadeId() != '' && minhaUnidadeId() == unidadeId;
+    }
+    function souDonoDoCliente(clienteId) {
+      return logado()
+        && clienteId != null
+        && get(/databases/$(database)/documents/clientes/$(clienteId)).data.authUid == request.auth.uid;
+    }
+
+    // usuarios: read liberado p/ logado (anti-deadlock); write só admin
+    match /usuarios/{uid} {
+      allow read: if logado();
+      allow write: if ehAdmin();
+    }
+
+    // unidades: leitura livre pra qualquer logado (app mostra lista/mapa);
+    // escrita só equipe interna.
+    match /unidades/{id} {
+      allow read: if logado();
+      allow write: if ehEquipeInterna();
+    }
+
+    // maquinas: todos logados leem (cliente escolhe no app); central escreve
+    // status via Admin SDK; só equipe interna cria/edita cadastro (preços por
+    // modo, etc. são decisão da plataforma).
+    match /maquinas/{id} {
+      allow read: if logado();
+      allow write: if ehEquipeInterna();
+    }
+
+    // clientes: operador acessa tudo; cliente lê e cria SÓ o próprio doc.
+    match /clientes/{id} {
+      allow read: if ehOperador() || (logado() && resource.data.authUid == request.auth.uid);
+
+      allow create: if ehOperador()
+        || (logado()
+            && request.resource.data.authUid == request.auth.uid
+            && request.resource.data.saldo == 0
+            && request.resource.data.saldoReservado == 0);
+
+      allow delete: if ehEquipeInterna();
+
+      // update: equipe interna pode tudo (ajuste manual de saldo, estorno).
+      // Operador de unidade e o próprio cliente podem editar cadastro, mas
+      // NUNCA mexer em saldo/saldoReservado.
+      allow update: if ehEquipeInterna()
+        || (ehOperador()
+            && request.resource.data.saldo == resource.data.saldo
+            && request.resource.data.saldoReservado == resource.data.saldoReservado)
+        || (logado()
+            && resource.data.authUid == request.auth.uid
+            && request.resource.data.saldo == resource.data.saldo
+            && request.resource.data.saldoReservado == resource.data.saldoReservado);
+    }
+
+    // ==========================================================================
+    // sessoes: o cliente só DECLARA intenção (escolhe máquina/modo, aceita
+    // pagar o valor). Toda movimentação de dinheiro e o diálogo com a ponte de
+    // hardware são feitos pela central (Admin SDK, ignora estas regras).
+    // ==========================================================================
+    match /sessoes/{id} {
+      allow read: if ehEquipeInterna()
+        || ehOperadorDaUnidade(resource.data.get('unidadeId', ''))
+        || souDonoDoCliente(resource.data.clienteId);
+
+      // create: nasce "aguardando", sem tocar em campos que são da central.
+      allow create: if logado()
+        && souDonoDoCliente(request.resource.data.clienteId)
+        && request.resource.data.status == 'aguardando'
+        && request.resource.data.valorReservado == 0
+        && request.resource.data.pararSolicitado == false
+        && request.resource.data.valor is int
+        && request.resource.data.valor > 0;
+
+      // update: o cliente só pode pedir para cancelar/parar. O resto é da central.
+      allow update: if ehEquipeInterna()
+        || (logado()
+            && souDonoDoCliente(resource.data.clienteId)
+            && request.resource.data.pararSolicitado == true
+            && resource.data.pararSolicitado == false
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.clienteId == resource.data.clienteId
+            && request.resource.data.valor == resource.data.valor
+            && request.resource.data.valorReservado == resource.data.valorReservado);
+
+      allow delete: if ehEquipeInterna();
+    }
+
+    // transacoes: extrato. Equipe interna lê tudo e cria créditos manuais;
+    // operador de unidade lê as da própria unidade; cliente lê as próprias.
+    // Débitos são sempre escritos pela central.
+    match /transacoes/{id} {
+      allow read: if ehEquipeInterna()
+        || ehOperadorDaUnidade(resource.data.get('unidadeId', ''))
+        || (logado() && resource.data.clienteId != null
+            && get(/databases/$(database)/documents/clientes/$(resource.data.clienteId)).data.authUid == request.auth.uid);
+      allow create: if ehEquipeInterna();
+      allow update, delete: if false;
+    }
+
+    match /recargas/{id} {
+      allow read: if ehOperador() || souDonoDoCliente(resource.data.clienteId);
+      allow create, update, delete: if false;
+    }
+
+    // alertas: falha reportada pela ponte de hardware (ex.: máquina travada).
+    // Só operador lê; toda escrita é feita pela central via Admin SDK.
+    match /alertas/{id} {
+      allow read: if ehOperador();
+      allow write: if false;
+    }
+  }
+}

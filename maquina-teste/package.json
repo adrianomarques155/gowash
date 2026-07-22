@@ -1,0 +1,13 @@
+{
+  "name": "gowash-maquina-teste",
+  "version": "0.1.0",
+  "description": "Simulador da ponte ESP32/relé — testa o fluxo de sessão sem hardware físico",
+  "type": "module",
+  "main": "maquina-virtual.js",
+  "scripts": {
+    "start": "node maquina-virtual.js"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  }
+}

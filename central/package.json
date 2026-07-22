@@ -1,0 +1,18 @@
+{
+  "name": "gowash-central",
+  "version": "0.1.0",
+  "description": "GoWash central — servidor que fala com a ponte de hardware (ESP32/relé) e gerencia sessões de lavagem",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "ws": "^8.21.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

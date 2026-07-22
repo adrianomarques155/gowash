@@ -1,0 +1,10 @@
+{
+  "name": "GoWash",
+  "short_name": "GoWash",
+  "description": "Lave seu carro com poucos toques",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0369a1",
+  "icons": []
+}
