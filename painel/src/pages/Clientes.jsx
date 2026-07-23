@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { cria, lista, atualiza } from "../lib/db.js";
+import { cria, lista, atualiza, apaga } from "../lib/db.js";
 import { COL, novoCliente, novaTransacao, saldoDisponivel, TIPO_TRANSACAO } from "../lib/schema.js";
 import { reaisParaCentavos, formataCentavos } from "../lib/dinheiro.js";
 import { formataCPF, formataTelefone } from "../lib/mascaras.js";
@@ -10,7 +10,8 @@ export default function Clientes() {
   const { usuario, ehAdmin } = useAuth();
   const [clientes, setClientes] = useState([]);
   const [busca, setBusca] = useState("");
-  const [modalNovo, setModalNovo] = useState(false);
+  const [modalAberto, setModalAberto] = useState(false);
+  const [editando, setEditando] = useState(null);
   const [modalSaldo, setModalSaldo] = useState(null); // cliente selecionado
   const [form, setForm] = useState(novoCliente());
   const [valorSaldo, setValorSaldo] = useState("");
@@ -35,17 +36,50 @@ export default function Clientes() {
     );
   });
 
-  async function salvarNovo(e) {
+  function abrirNovo() {
+    setEditando(null);
+    setForm(novoCliente());
+    setModalAberto(true);
+  }
+
+  function abrirEdicao(c) {
+    setEditando(c);
+    setForm(c);
+    setModalAberto(true);
+  }
+
+  async function salvar(e) {
     e.preventDefault();
     setSalvando(true);
     try {
-      await cria(COL.clientes, novoCliente(form));
-      setModalNovo(false);
+      if (editando) {
+        await atualiza(COL.clientes, editando.id, {
+          nome: form.nome,
+          cpf: form.cpf,
+          email: form.email,
+          telefone: form.telefone,
+          placaPadrao: form.placaPadrao,
+        });
+      } else {
+        await cria(COL.clientes, novoCliente(form));
+      }
+      setModalAberto(false);
       setForm(novoCliente());
       await recarregar();
     } finally {
       setSalvando(false);
     }
+  }
+
+  async function alternarAtivo(c) {
+    await atualiza(COL.clientes, c.id, { ativo: !c.ativo });
+    await recarregar();
+  }
+
+  async function remover(c) {
+    if (!confirm(`Excluir o cliente "${c.nome || c.email}"? Isso apaga o cadastro (o histórico de sessões/transações continua).`)) return;
+    await apaga(COL.clientes, c.id);
+    await recarregar();
   }
 
   async function salvarCredito(e) {
@@ -77,7 +111,7 @@ export default function Clientes() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold text-slate-800">Clientes</h1>
-        <Botao onClick={() => setModalNovo(true)}>+ Novo cliente</Botao>
+        <Botao onClick={abrirNovo}>+ Novo cliente</Botao>
       </div>
 
       <Input
@@ -88,7 +122,7 @@ export default function Clientes() {
       />
 
       <Cartao>
-        <Tabela colunas={["Nome", "CPF", "Placa", "Saldo disponível", ""]}>
+        <Tabela colunas={["Nome", "CPF", "Placa", "Saldo disponível", "Status", ""]}>
           {filtrados.map((c) => (
             <tr key={c.id} className="border-b border-slate-100 last:border-0">
               <td className="py-2 pr-4 font-medium">{c.nome || "(sem nome)"}</td>
@@ -99,18 +133,32 @@ export default function Clientes() {
                   {formataCentavos(saldoDisponivel(c))}
                 </Badge>
               </td>
-              <td className="py-2 pr-4 text-right">
+              <td className="py-2 pr-4">
+                <Badge cor={c.ativo === false ? "slate" : "green"}>{c.ativo === false ? "Inativo" : "Ativo"}</Badge>
+              </td>
+              <td className="py-2 pr-4 text-right space-x-2 whitespace-nowrap">
+                <button onClick={() => abrirEdicao(c)} className="text-gowash-600 hover:underline text-xs">
+                  Editar
+                </button>
                 {ehAdmin && (
-                  <button onClick={() => setModalSaldo(c)} className="text-gowash-600 hover:underline text-xs">
-                    Adicionar saldo
-                  </button>
+                  <>
+                    <button onClick={() => setModalSaldo(c)} className="text-gowash-600 hover:underline text-xs">
+                      Adicionar saldo
+                    </button>
+                    <button onClick={() => alternarAtivo(c)} className="text-slate-500 hover:underline text-xs">
+                      {c.ativo === false ? "Ativar" : "Desativar"}
+                    </button>
+                    <button onClick={() => remover(c)} className="text-red-600 hover:underline text-xs">
+                      Excluir
+                    </button>
+                  </>
                 )}
               </td>
             </tr>
           ))}
           {filtrados.length === 0 && (
             <tr>
-              <td colSpan={5} className="py-6 text-center text-slate-400">
+              <td colSpan={6} className="py-6 text-center text-slate-400">
                 Nenhum cliente encontrado.
               </td>
             </tr>
@@ -118,8 +166,8 @@ export default function Clientes() {
         </Tabela>
       </Cartao>
 
-      <Modal aberto={modalNovo} onFechar={() => setModalNovo(false)} titulo="Novo cliente">
-        <form onSubmit={salvarNovo}>
+      <Modal aberto={modalAberto} onFechar={() => setModalAberto(false)} titulo={editando ? "Editar cliente" : "Novo cliente"}>
+        <form onSubmit={salvar}>
           <Campo label="Nome">
             <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required />
           </Campo>
