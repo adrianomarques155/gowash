@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { cria, lista, atualiza } from "../lib/db.js";
 import { COL, novoCliente, novaTransacao, saldoDisponivel, TIPO_TRANSACAO } from "../lib/schema.js";
 import { reaisParaCentavos, formataCentavos } from "../lib/dinheiro.js";
+import { formataCPF, formataTelefone } from "../lib/mascaras.js";
 import { Botao, Cartao, Campo, Input, Modal, Tabela, Badge } from "../components/ui.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -123,13 +124,25 @@ export default function Clientes() {
             <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required />
           </Campo>
           <Campo label="CPF">
-            <Input value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
+            <Input
+              value={form.cpf}
+              onChange={(e) => setForm({ ...form, cpf: formataCPF(e.target.value) })}
+              inputMode="numeric"
+              placeholder="000.000.000-00"
+              maxLength={14}
+            />
           </Campo>
           <Campo label="E-mail">
             <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </Campo>
           <Campo label="Telefone">
-            <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+            <Input
+              value={form.telefone}
+              onChange={(e) => setForm({ ...form, telefone: formataTelefone(e.target.value) })}
+              inputMode="numeric"
+              placeholder="(00) 00000-0000"
+              maxLength={15}
+            />
           </Campo>
           <Campo label="Placa (opcional)">
             <Input

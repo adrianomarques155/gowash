@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cria } from "../lib/db.js";
 import { COL, novoCliente } from "../lib/schema.js";
+import { formataCPF, formataTelefone } from "../lib/mascaras.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Botao, Campo, Input, Cartao } from "./ui.jsx";
 
@@ -41,10 +42,23 @@ export default function CompletarCadastro() {
             <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required />
           </Campo>
           <Campo label="CPF">
-            <Input value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} required />
+            <Input
+              value={form.cpf}
+              onChange={(e) => setForm({ ...form, cpf: formataCPF(e.target.value) })}
+              inputMode="numeric"
+              placeholder="000.000.000-00"
+              maxLength={14}
+              required
+            />
           </Campo>
           <Campo label="Telefone">
-            <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+            <Input
+              value={form.telefone}
+              onChange={(e) => setForm({ ...form, telefone: formataTelefone(e.target.value) })}
+              inputMode="numeric"
+              placeholder="(00) 00000-0000"
+              maxLength={15}
+            />
           </Campo>
           <Campo label="Placa do carro">
             <Input

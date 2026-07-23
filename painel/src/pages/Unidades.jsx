@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { cria, lista, atualiza, apaga } from "../lib/db.js";
 import { COL, novaUnidade } from "../lib/schema.js";
+import { formataTelefone } from "../lib/mascaras.js";
 import { Botao, Cartao, Campo, Input, Modal, Tabela, Badge } from "../components/ui.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -118,7 +119,13 @@ export default function Unidades() {
             <Input value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} />
           </Campo>
           <Campo label="Telefone">
-            <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+            <Input
+              value={form.telefone}
+              onChange={(e) => setForm({ ...form, telefone: formataTelefone(e.target.value) })}
+              inputMode="numeric"
+              placeholder="(00) 00000-0000"
+              maxLength={15}
+            />
           </Campo>
           <div className="grid grid-cols-2 gap-3">
             <Campo label="Latitude">
