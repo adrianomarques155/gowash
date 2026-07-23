@@ -73,6 +73,7 @@ export default async function handler(req, res) {
     const data = await cresp.json();
     res.status(200).json(data); // { recargaId, initPoint }
   } catch (e) {
-    res.status(500).json({ erro: "interno" });
+    console.error("[criar-pagamento] erro:", e.message, e.stack);
+    res.status(500).json({ erro: `interno: ${e.message}` });
   }
 }

@@ -86,6 +86,7 @@ export default async function handler(req, res) {
     }
     res.status(200).json(data); // { ok, uid }
   } catch (e) {
-    res.status(500).json({ erro: "interno" });
+    console.error("[criar-operador] erro:", e.message, e.stack);
+    res.status(500).json({ erro: `interno: ${e.message}` });
   }
 }
