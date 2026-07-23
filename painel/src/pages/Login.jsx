@@ -4,6 +4,7 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../lib/firebase.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Botao, Campo, Input, Cartao } from "../components/ui.jsx";
+import LogoGoWash from "../components/LogoGoWash.jsx";
 
 export default function Login() {
   const { user, usuario, carregando } = useAuth();
@@ -32,7 +33,7 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <Cartao className="w-full max-w-sm">
-        <h1 className="text-xl font-bold text-gowash-700 mb-1">GoWash</h1>
+        <LogoGoWash className="h-14 mb-2" />
         <p className="text-sm text-slate-500 mb-5">Painel de gestão</p>
         <form onSubmit={entrar}>
           <Campo label="E-mail">

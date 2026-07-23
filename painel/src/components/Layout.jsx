@@ -1,5 +1,6 @@
 import { NavLink, Outlet, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import LogoGoWash from "./LogoGoWash.jsx";
 
 const LINKS = [
   { to: "/", label: "Painel", fim: true },
@@ -25,8 +26,8 @@ export default function Layout() {
     <div className="min-h-screen flex">
       <aside className="w-56 bg-white border-r border-slate-200 flex flex-col">
         <div className="px-5 py-5 border-b border-slate-200">
-          <span className="text-lg font-bold text-gowash-700">GoWash</span>
-          <div className="text-xs text-slate-400">Painel de gestão</div>
+          <LogoGoWash className="h-8" />
+          <div className="text-xs text-slate-400 mt-1">Painel de gestão</div>
         </div>
         <nav className="flex-1 py-3">
           {LINKS.filter((l) => !l.soAdmin || ehAdmin).map((l) => (
