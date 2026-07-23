@@ -81,6 +81,43 @@ máquinas Pinyun 360. Mesma relação do ChargeTix `postos` → `chargers`.
 - Firestore compartilhado, projeto Firebase próprio do GoWash (a criar).
 - Dinheiro sempre em **centavos inteiros** (`dinheiro.js`, único lugar que converte).
 
+## FRENTE MAPA (23/07)
+`app-cliente/src/pages/Unidades.jsx` agora mostra um mapa Leaflet (mesmo
+padrão do ChargeTix: tiles CARTO light, sem API key) com um pino por unidade
+(verde = tem máquina disponível, cinza = sem vaga), geolocalização do cliente,
+e a lista ordenada por distância embaixo do mapa. Tocar no pino abre um popup
+com "Ver máquinas" → `/unidade/:id`.
+
+## FRENTE PAGAMENTO — Mercado Pago (23/07)
+Espelha a frente PAGAMENTO do ChargeTix (Checkout Pro: Pix + Cartão). Mesma
+filosofia da sessão de lavagem: o app NUNCA mexe em dinheiro, só pede a
+recarga; a **central** cria a cobrança e credita o saldo SOMENTE quando o MP
+confirma via webhook (idempotente, transacional, centavos inteiros).
+
+- `central/src/pagamentos.js` — cria a preference no MP, valida o webhook
+  (segredo na URL + HMAC), credita saldo idempotente.
+- `central/src/firestore.js` — funções de recarga (criaRecargaPendente,
+  creditaSaldoIdempotente, etc.), coladas no fim do arquivo.
+- `central/src/server.js` — rota `POST /webhook/mercadopago/<segredo>` e
+  `POST /api/pagamento/criar` na API interna.
+- `app-cliente/src/lib/pagamento.js` + `RecargaModal.jsx` — cliente digita
+  valor livre ou escolhe atalho, é redirecionado pro checkout do MP.
+- `app-cliente/api/criar-pagamento.js` — function serverless da Vercel que
+  guarda o `CENTRAL_API_TOKEN` longe do navegador.
+
+**Decisão (23/07):** por enquanto reaproveita a MESMA conta Mercado Pago do
+ChargeTix (`MP_ACCESS_TOKEN` idêntico nos dois projetos) — troca só a conta
+depois, se precisar, sem mexer em mais nada. `MP_WEBHOOK_SECRET` e
+`MP_WEBHOOK_PATH_SECRET` são DIFERENTES dos do ChargeTix (cada URL de webhook
+tem sua própria assinatura).
+
+Falta fazer (manual, fora do código):
+1. Cadastrar o webhook do GoWash no painel do Mercado Pago.
+2. Colar as variáveis de `central/.env.pagamento.example` no Railway.
+3. Adicionar `CENTRAL_URL`, `CENTRAL_API_TOKEN`, `FIREBASE_API_KEY` no
+   projeto Vercel do app-cliente (mesmo padrão do painel).
+4. Testar uma recarga de valor baixo (R$ 5) ponta a ponta.
+
 ## PRÓXIMOS PASSOS
 1. Criar projeto Firebase do GoWash (Auth + Firestore), preencher `.env.local`
    em cada bloco.

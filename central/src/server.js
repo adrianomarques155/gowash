@@ -32,6 +32,7 @@ import {
 } from "./firestore.js";
 import { parseMensagem, montaComando, TIPO_PONTE } from "./protocolo.js";
 import { trataEventoPonte } from "./handlers.js";
+import { criarPagamento, processarWebhook } from "./pagamentos.js";
 
 const PORT = process.env.PORT || 8080;
 const API_TOKEN = process.env.CENTRAL_API_TOKEN || "";
@@ -147,6 +148,38 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Webhook do Mercado Pago (NÃO usa o Bearer do CENTRAL_API_TOKEN — quem
+  // chama é o MP). Protegido por DUAS camadas: segredo no caminho + assinatura
+  // HMAC, ambas verificadas dentro de processarWebhook().
+  // URL: POST /webhook/mercadopago/<segredo>?type=payment&data.id=<paymentId>
+  if (req.url?.startsWith("/webhook/mercadopago/") && req.method === "POST") {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    const pathSecret = u.pathname.split("/webhook/mercadopago/")[1] || "";
+    const query = Object.fromEntries(u.searchParams.entries());
+
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", async () => {
+      try {
+        if (!query["data.id"] && body) {
+          try {
+            const j = JSON.parse(body);
+            if (j?.data?.id) query["data.id"] = String(j.data.id);
+            if (j?.type && !query.type) query.type = j.type;
+          } catch {}
+        }
+        const r = await processarWebhook({ pathSecret, headers: req.headers, query });
+        res.writeHead(r.http, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(r.body || {}));
+      } catch (e) {
+        console.error("[webhook] erro:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ erro: "interno" }));
+      }
+    });
+    return;
+  }
+
   if (req.url?.startsWith("/api/") && req.method === "POST") {
     const auth = req.headers["authorization"] || "";
     if (!API_TOKEN || auth !== `Bearer ${API_TOKEN}`) {
@@ -186,6 +219,13 @@ async function trataApi(url, dados) {
   if (url === "/api/status") {
     const { deviceId } = dados;
     return { conectado: conexoes.has(deviceId) };
+  }
+
+  if (url === "/api/pagamento/criar") {
+    // dados: { clienteId, valorCentavos } — chamado pela function serverless
+    // da Vercel (api/criar-pagamento.js), que já validou o ID token do cliente.
+    const { clienteId, valorCentavos } = dados;
+    return await criarPagamento({ clienteId, valorCentavos });
   }
 
   if (url === "/api/usuario/criar") {

@@ -239,6 +239,94 @@ export async function criaAlerta({ maquinaId, unidadeId, tipo, mensagem }) {
   });
 }
 
+// --- Recargas (Mercado Pago) ------------------------------------------------
+
+export async function criaRecargaPendente({ clienteId, valor }) {
+  const db = getDb();
+  const ref = db.collection(COL.recargas).doc();
+  await ref.set({
+    clienteId,
+    valor: Math.round(Number(valor) || 0),
+    status: "criada", // criada → pendente → pago | falhou | erro
+    paymentId: null,
+    preferenceId: null,
+    taxaMp: 0,
+    valorLiquido: 0,
+    metodoMp: "",
+    criadoEm: Date.now(),
+  });
+  return ref.id;
+}
+
+export async function achaRecargaPorId(recargaId) {
+  const doc = await getDb().collection(COL.recargas).doc(recargaId).get();
+  return doc.exists ? { id: doc.id, ...doc.data() } : null;
+}
+
+export async function marcaRecargaStatus(recargaId, status, extra = {}) {
+  await getDb().collection(COL.recargas).doc(recargaId).update({
+    status,
+    ...extra,
+    atualizadoEm: Date.now(),
+  });
+}
+
+// Crédito de saldo ATÔMICO e IDEMPOTENTE — trava por status "pago" + paymentId
+// dentro da própria transação, então um webhook repetido nunca credita 2×.
+export async function creditaSaldoIdempotente({
+  clienteId,
+  recargaId,
+  valorCentavos,
+  paymentId,
+  taxaMp = 0,
+  valorLiquido = 0,
+  metodoMp = "",
+}) {
+  const db = getDb();
+  const recargaRef = db.collection(COL.recargas).doc(recargaId);
+  const clienteRef = db.collection(COL.clientes).doc(clienteId);
+  const txRef = db.collection(COL.transacoes).doc();
+
+  return await db.runTransaction(async (tx) => {
+    const recargaDoc = await tx.get(recargaRef);
+    if (!recargaDoc.exists) return false;
+    const r = recargaDoc.data();
+
+    if (r.status === "pago" || r.paymentId) return false; // já creditada
+
+    const clienteDoc = await tx.get(clienteRef);
+    if (!clienteDoc.exists) return false;
+    const c = clienteDoc.data();
+
+    const valor = Math.round(Number(valorCentavos) || 0);
+    const taxa = Math.round(Number(taxaMp) || 0);
+    const liquido = valorLiquido > 0 ? Math.round(Number(valorLiquido)) : Math.max(0, valor - taxa);
+
+    tx.update(clienteRef, { saldo: (c.saldo || 0) + valor });
+    tx.update(recargaRef, {
+      status: "pago",
+      paymentId: String(paymentId),
+      pagoEm: Date.now(),
+      taxaMp: taxa,
+      valorLiquido: liquido,
+      metodoMp: metodoMp || "",
+    });
+    tx.set(txRef, {
+      clienteId,
+      tipo: "credito",
+      valor,
+      descricao: "Recarga via Mercado Pago",
+      recargaId,
+      paymentId: String(paymentId),
+      taxaMp: taxa,
+      valorLiquido: liquido,
+      operadorUid: "",
+      criadoEm: Date.now(),
+    });
+    return true;
+  });
+}
+
 // --- Usuários do painel --------------------------------------------------
 
 export async function ehAdminUid(uid) {
